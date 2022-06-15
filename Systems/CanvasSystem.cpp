@@ -15,8 +15,18 @@ Eigen::VectorXf Update_Centripetal_Parameterization(std::vector<Ubpa::pointf2> p
 Eigen::VectorXf Update_Foley_Parameterization(std::vector<Ubpa::pointf2> points);
 float _getAlpha(int i, const std::vector<Ubpa::pointf2>& points);
 
+//计算鼠标点击与控制点的距离
+float Click_Point_Distance(Ubpa::pointf2 pos1, Ubpa::pointf2 pos2);
+
 //计算样条曲线
 std::vector<Ubpa::pointf2> Draw_Spline(Eigen::VectorXf t, std::vector<Ubpa::pointf2>, float sampling_period = 0.001f);
+
+//计算Bezier曲线
+//初始化Bezier曲线控制点
+std::vector<Ubpa::pointf2> InitBezierControlPoints(std::vector<Ubpa::pointf2> points);
+//计算Bezier曲线
+std::vector<Ubpa::pointf2> Draw_Bezier(std::vector<Ubpa::pointf2> point, float sampling_period = 0.005f);
+
 
 //绘制函数
 void DrawCurve(ImDrawList* draw_list, float origin_x, float origin_y, std::vector<pointf2> draw_points,ImU32 color);
@@ -48,9 +58,9 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 			ImGui::RadioButton("Edit Bezier Curve\t", &data->btn1, 3);
 
 			if (data->btn1 == 3) {
-				ImGui::SameLine(); ImGui::RadioButton("C0\t",&data->btn2,0);
+				ImGui::SameLine(); ImGui::RadioButton("C1\t",&data->btn2,0);
 				ImGui::SameLine(); ImGui::RadioButton("G1\t",&data->btn2,1);
-				ImGui::SameLine(); ImGui::RadioButton("C1\t",&data->btn2,2);
+				ImGui::SameLine(); ImGui::RadioButton("C0\t",&data->btn2,2);
 			}
 			//ImGui::InputInt("Sample Num", &data->SampleNum);
 			ImGui::Text("Press [Space] to finish drawing; Press [Z] to print the pos of all type points.");
@@ -109,6 +119,134 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 				}
 			}
 
+			//Edit point
+			if ((data->btn1 == 1 || data->btn1 == 3) && data->points.size() > 1 && !data->editing_type_points && !data->editing_control_points) {
+				//如果处于曲线编辑状态，并且未开启编辑点的状态
+				std::vector<Ubpa::pointf2>::iterator iter = data->points.begin();
+				while (iter != data->points.end()) {
+					if (Click_Point_Distance(mouse_pos_in_canvas,*iter)<= 5.0f&&ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+						//若距离小于5，并且按下鼠标左键
+						//获取编辑点每个坐标点的下标index
+						data->type_point_index = std::distance(data->points.begin(), iter);//计算当前点是从起始点开始的第几个点
+
+						//保存选中的类型点及其控制点的pos，用于编辑Bezier曲线 
+						if (data->control_points.size() > 0) {
+							//选中当前的编辑点
+							data->selected_type_point = data->points[data->type_point_index];
+							if (data->type_point_index > 0) {
+								//如果当前选中的编辑点不是起始点，增加右控制点
+								data->selected_ctrl_point1 = data->control_points[3 * data->type_point_index - 1];
+							}
+							if (data->type_point_index < data->points.size() - 1) {
+								//如果选择的编辑点不是末尾点,增加左控制点
+								data->selected_ctrl_point2 = data->control_points[3 * data->type_point_index + 1];
+							}
+						}
+						data->editing_points = true;//启用点编辑状态
+						data->editing_type_points = true;//启用编辑点 编辑状态
+						break;
+					}
+					iter++;
+				}
+
+				if (data->btn1 == 3 && data->editing_points && !data->editing_type_points) {
+					//如果处于bezier曲线编辑状态，且只有编辑点开关启用
+					int index = data->type_point_index;
+					if (index > 0 && Click_Point_Distance(mouse_pos_in_canvas, data->control_points[3 * index - 1]) <= 5.0f && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+						//如果当前点击处与编辑点距离小于5f
+						data->control_point_index = 3 * index - 1;
+						data->editing_control_points = true;//启用编辑控制点
+					}
+					if (index < data->points.size() - 1 && Click_Point_Distance(mouse_pos_in_canvas, data->control_points[3 * index + 1]) <= 5.0f && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+						//如果编辑点在点列内
+						data->editing_control_points = 3 * index + 1;
+						data->editing_control_points = true;//启用编辑控制点
+					}
+				}
+
+				if ((!data->editing_type_points && !data->editing_control_points && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) || ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+					//如果未启用编辑状态或未点击场景
+					data->editing_points = false;//不启用编辑点
+				}
+			}
+
+			//编辑 编辑点
+			if ((data->btn1 == 1 || data->btn1 == 3) && data->editing_type_points && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				//若处于点编辑状态
+				data->points[data->type_point_index] = mouse_pos_in_canvas;//获取编辑点坐标
+
+				if (data->control_points.size() > 0) {
+					//存在控制点
+					data->control_points[3 * data->type_point_index] = mouse_pos_in_canvas;
+					
+					if (data->type_point_index > 0) {
+						data->control_points[3 * data->type_point_index - 1][0] = data->selected_ctrl_point1[0] + mouse_pos_in_canvas[0] - data->selected_type_point[0];
+						data->control_points[3 * data->type_point_index - 1][1] = data->selected_ctrl_point1[1] + mouse_pos_in_canvas[1] - data->selected_type_point[1];
+					}
+					if (data->type_point_index < data->points.size() - 1) {
+						data->control_points[3 * data->type_point_index + 1][0] = data->selected_ctrl_point2[0] + mouse_pos_in_canvas[0] - data->selected_type_point[0];
+						data->control_points[3 * data->type_point_index + 1][1] = data->selected_ctrl_point2[1] + mouse_pos_in_canvas[1] - data->selected_type_point[1];
+					}
+				}
+			}
+
+			if ((data->btn1 == 1 || data->btn1 == 3) && data->editing_type_points && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+				data->editing_type_points = false;
+			}
+
+			//编辑Bezier曲线的控制点
+			if (data->btn1 == 3 && data->editing_control_points && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+				//由鼠标选定控制点
+				float dis1 = Click_Point_Distance(data->control_points[data->control_point_index], mouse_pos_in_canvas);
+				float dis2 = Click_Point_Distance(data->control_points[data->control_point_index+2], mouse_pos_in_canvas);
+
+				if (dis1-dis2 <= 0) {
+					data->control_points[data->control_point_index] = mouse_pos_in_canvas;
+				}
+				else {
+					data->control_points[data->control_point_index+2] = mouse_pos_in_canvas;
+				}
+				/*data->control_points[data->control_point_index] = mouse_pos_in_canvas;*/
+				// C1
+				if (data->btn2 == 0 && data->type_point_index > 0 && data->type_point_index < data->points.size() - 1) {
+					//如果不是起始点和结束点
+					if (data->control_point_index < 3 * data->type_point_index) {
+						//不是结束点
+						data->control_points[data->control_point_index + 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
+						data->control_points[data->control_point_index + 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
+					}
+					else {
+						//不是起点
+						data->control_points[data->control_point_index - 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
+						data->control_points[data->control_point_index - 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
+					}
+				}
+				// G1
+				else if (data->btn2 == 1 && data->type_point_index > 0 && data->type_point_index < data->points.size() - 1) {
+					float R = Click_Point_Distance(data->points[data->type_point_index], mouse_pos_in_canvas);
+					if (R != 0.0f && data->control_point_index < 3 * data->type_point_index) {
+						float r = Click_Point_Distance(data->points[data->type_point_index], data->selected_ctrl_point2);
+						data->control_points[data->control_point_index + 2][0] = (1.0f + r / R) * data->points[data->type_point_index][0] - r / R * data->control_points[data->control_point_index][0];
+						data->control_points[data->control_point_index + 2][1] = (1.0f + r / R) * data->points[data->type_point_index][1] - r / R * data->control_points[data->control_point_index][1];
+						data->selected_ctrl_point1 = data->control_points[data->control_point_index];
+						data->selected_ctrl_point2 = data->control_points[data->control_point_index + 2];
+					}
+					else if (R != 0.0f && data->control_point_index > 3 * data->type_point_index) {
+						float r =Click_Point_Distance(data->points[data->type_point_index], data->selected_ctrl_point1);
+						data->control_points[data->control_point_index - 2][0] = (1.0f + r / R) * data->points[data->type_point_index][0] - r / R * data->control_points[data->control_point_index][0];
+						data->control_points[data->control_point_index - 2][1] = (1.0f + r / R) * data->points[data->type_point_index][1] - r / R * data->control_points[data->control_point_index][1];
+						data->selected_ctrl_point1 = data->control_points[data->control_point_index - 2];
+						data->selected_ctrl_point2 = data->control_points[data->control_point_index];
+					}
+				}
+				// C0无需处理
+			}
+
+			if (data->btn1 == 3 && data->editing_control_points && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+				data->editing_control_points = false;
+			}
+
+
 
 			// Pan (we use a zero mouse threshold when there's no context menu)
 			// You may decide to make that threshold dynamic based on whether the mouse is hovering something etc.
@@ -156,6 +294,7 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 				ImGui::EndPopup();
 
 			}
+
 
 			// Draw grid + all lines in the canvas
 			draw_list->PushClipRect(canvas_p0, canvas_p1, true);
@@ -219,11 +358,15 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 				}
 				else if (data->btn1 == 2 || data->btn1 == 3) {//如果选择绘制/控制Bezier曲线
 					if (data->btn1 == 2 || data->control_points.size() != (data->points.size() * 3 - 2)) {
-						//如果每两个点不是由四个控制点控制
-						//初始化Bezier曲线的控制点
+						//如果每两个点不是由四个控制点控制，初始化Bezier曲线的控制点
+						//重新初始化控制点，保证存在3n-2个控制点
+						data->control_points = InitBezierControlPoints(data->points);
 					}
-					//计算bezier曲线
-					//绘制Bezier曲线
+					//计算Beizier插值点值
+					draw_points = Draw_Bezier(data->control_points);
+
+					//绘制Beizier曲线
+					DrawCurve(draw_list, origin.x, origin.y, draw_points, IM_COL32(254, 67, 101, 255));
 				}
 
 				//绘制点列
@@ -235,7 +378,17 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 
 				//绘制控制点 与 控制线
 				if (data->btn1 == 3 && data->editing_points) {
-		
+					int i = data->type_point_index;
+					if (i > 0) {
+						//画左控制点、线
+						draw_list->AddRectFilled(ImVec2(data->control_points[3 * i - 1][0] + origin.x - 3.0f, data->control_points[3 * i - 1][1] + origin.y - 3.0f), ImVec2(data->control_points[3 * i - 1][0] + origin.x + 3.0f, data->control_points[3 * i - 1][1] + origin.y + 3.0f), IM_COL32(255, 255, 255, 255));
+						draw_list->AddLine(ImVec2(origin.x + data->control_points[3 * i - 1][0], origin.y + data->control_points[3 * i - 1][1]), ImVec2(origin.x + data->points[i][0], origin.y + data->points[i][1]), IM_COL32(255, 255, 255, 255), 1.0f);
+					}
+					if (i < data->points.size() - 1) {
+						//画右控制点、线
+						draw_list->AddRectFilled(ImVec2(data->control_points[3 * i + 1][0] + origin.x - 3.0f, data->control_points[3 * i + 1][1] + origin.y - 3.0f), ImVec2(data->control_points[3 * i + 1][0] + origin.x + 3.0f, data->control_points[3 * i + 1][1] + origin.y + 3.0f), IM_COL32(255, 255, 255, 255));
+						draw_list->AddLine(ImVec2(origin.x + data->points[i][0], origin.y + data->points[i][1]), ImVec2(origin.x + data->control_points[3 * i + 1][0], origin.y + data->control_points[3 * i + 1][1]), IM_COL32(255, 255, 255, 255), 1.0f);
+					}
 				}
 			}
 			draw_list->PopClipRect();
@@ -244,6 +397,7 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 		ImGui::End();
 	});
 }
+
 
 //参数化
 Eigen::VectorXf Update_Uniform_Parameterization(std::vector<Ubpa::pointf2> points) {
@@ -351,6 +505,72 @@ float _getAlpha(int i, const std::vector<Ubpa::pointf2>& points) {
 	float alpha = M_PI - acos((d_prev * d_prev + d_next * d_next - l2 / (2 * d_next * d_prev)));
 
 	return alpha;
+}
+
+
+//计算鼠标点击与控制点的距离
+float Click_Point_Distance(pointf2 pos1, pointf2 pos2) {
+	return std::sqrt(std::pow(pos1[0] - pos2[0], 2) + std::pow(pos1[1] - pos2[1],2));
+}
+
+//初始化Bezier曲线的控制点，满足C0
+std::vector<Ubpa::pointf2> InitBezierControlPoints(std::vector<Ubpa::pointf2> points) {
+	std::vector<Ubpa::pointf2> control_points(3 * points.size() - 2);//初始化控制点，数量为关键点的3n-2
+	control_points[0] = points[0];//起始点
+	control_points[3 * (points.size() - 1)] = points[points.size() - 1];//结束点
+
+	if (points.size() == 2) {
+		//如果只有两个点，那么共有四个控制点，中间两个控制点通过前后两个点生成
+		//此处仅初始化，任意取插值即可，满足C0
+		control_points[1] = (((5.0f * points[0][0] + points[1][0]) / 6.0f), ((5.0f * points[0][1] + points[1][1]) / 6.0f));
+		control_points[2] = (((points[0][0] + 5.0f * points[1][0]) / 6.0f), ((points[0][1] + 5.0f * points[1][1]) / 6.0f));
+		return control_points;
+	}
+
+	//循环生成中间的控制节点，不包括起始点与终止点的控制点
+	for (int i = 1; i < points.size() - 1; i++) {
+		control_points[3 * i] = points[i];//每个初始点作为控制点的第3i个
+		Eigen::Matrix4f A;
+		A << -1, 1, 0, 0, 
+			 0, 0, -1, 1, 
+			 1, 1, 0, 0, 
+			 0, 0, 1, 1;
+
+		Eigen::Vector4f pos;
+		Eigen::Vector4f b((points[i + 1][0] - points[i - 1][0]) / 3.0f, (points[i + 1][1] - points[i - 1][1] / 3.0f), 2.0f * points[i][0], 2.0f * points[i][1]);
+		pos = A.colPivHouseholderQr().solve(b);//计算Ap = b中的p参数
+		
+        //由当前点p，生成前后的控制点p1,p2, p1、p2处于p点的切线上
+		const pointf2 pos_1(pos(0), pos(2));//当前点的前一个控制点p1
+		const pointf2 pos_2(pos(1), pos(3));//当前点的后一个控制点p2
+		control_points[3 * i - 1] = pos_1;
+		control_points[3 * i + 1] = pos_2;
+	}
+
+	//计算起点与终点的控制点，分别只有一个控制点,由第二个点生成的前控制点P1决定，不满足各种性质
+	const pointf2 pos1((points[0][0] * 5.0f + control_points[2][0]) / 6.0f, (points[0][1] * 5.0f + control_points[2][1]) / 6.0f);
+	control_points[1] = pos1;
+	const pointf2 pos2((points[points.size() - 1][0] * 5.0f + control_points[control_points.size() - 3][0]) / 6.0f, 
+		(points[points.size() - 1][1] * 5.0f + control_points[control_points.size() - 3][1]) / 6.0f);
+	control_points[control_points.size() - 2] = pos2;
+
+	return control_points;
+}
+
+//计算三次Bezier曲线
+std::vector<Ubpa::pointf2> Draw_Bezier(std::vector<Ubpa::pointf2> control_points, float sampling_period) {
+	int n = control_points.size();
+	std::vector<Ubpa::pointf2> draw_points;
+	for (int i = 0; i < n-3; i+=3) {
+		//每四个控制点进行一次三次插值,得到一条Bezier曲线
+		for (float t = 0.0f; t < 1.0f; t += sampling_period) {
+			float t_x = std::pow(1 - t, 3) * control_points[i][0] + 3 * t * std::pow(1 - t, 2) * control_points[i + 1][0] + 3 * std::pow(t, 2) * (1 - t) * control_points[i + 2][0] + std::pow(t, 3) * control_points[i + 3][0];
+			float t_y = std::pow(1 - t, 3) * control_points[i][1] + 3 * t * std::pow(1 - t, 2) * control_points[i + 1][1] + 3 * std::pow(t, 2) * (1 - t) * control_points[i + 2][1] + std::pow(t, 3) * control_points[i + 3][1];
+			Ubpa::pointf2 p(t_x, t_y);
+			draw_points.push_back(p);
+		}
+	}
+	return draw_points;
 }
 
 
