@@ -196,35 +196,44 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 
 			//编辑Bezier曲线的控制点
 			if (data->btn1 == 3 && data->editing_control_points && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-				//由鼠标选定控制点
-				float dis1 = Click_Point_Distance(data->control_points[data->control_point_index], mouse_pos_in_canvas);
-				float dis2 = Click_Point_Distance(data->control_points[data->control_point_index+2], mouse_pos_in_canvas);
-
-				if (dis1-dis2 <= 0) {
+				
+				if (data->type_point_index == 0) {
+					data->control_points[1] = mouse_pos_in_canvas;
+				}
+				else if (data->control_point_index == data->control_points.size() - 2) {
 					data->control_points[data->control_point_index] = mouse_pos_in_canvas;
 				}
 				else {
-					data->control_points[data->control_point_index+2] = mouse_pos_in_canvas;
+					//data->control_points[data->control_point_index] = mouse_pos_in_canvas;
+
+					//由鼠标选定控制点
+					float dis1 = Click_Point_Distance(data->control_points[3*data->type_point_index - 1], mouse_pos_in_canvas);
+					float dis2 = Click_Point_Distance(data->control_points[3*data->type_point_index + 1], mouse_pos_in_canvas);
+					if (dis1 - dis2 < 0) {
+						data->control_points[3 * data->type_point_index - 1] = mouse_pos_in_canvas;
+					}
+					else {
+						data->control_points[3 * data->type_point_index + 1] = mouse_pos_in_canvas;
+					}
 				}
-				/*data->control_points[data->control_point_index] = mouse_pos_in_canvas;*/
+				
 				// C1
 				if (data->btn2 == 0 && data->type_point_index > 0 && data->type_point_index < data->points.size() - 1) {
-					//如果不是起始点和结束点
-					if (data->control_point_index < 3 * data->type_point_index) {
-						//不是结束点
+					if (data->control_point_index == 3 * data->type_point_index -1) {
 						data->control_points[data->control_point_index + 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
 						data->control_points[data->control_point_index + 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
 					}
 					else {
-						//不是起点
 						data->control_points[data->control_point_index - 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
 						data->control_points[data->control_point_index - 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
 					}
 				}
+
 				// G1
 				else if (data->btn2 == 1 && data->type_point_index > 0 && data->type_point_index < data->points.size() - 1) {
 					float R = Click_Point_Distance(data->points[data->type_point_index], mouse_pos_in_canvas);
 					if (R != 0.0f && data->control_point_index < 3 * data->type_point_index) {
+						//选择控制点p1、保证控制点p2在控制点p1、p的直线上（共线）
 						float r = Click_Point_Distance(data->points[data->type_point_index], data->selected_ctrl_point2);
 						data->control_points[data->control_point_index + 2][0] = (1.0f + r / R) * data->points[data->type_point_index][0] - r / R * data->control_points[data->control_point_index][0];
 						data->control_points[data->control_point_index + 2][1] = (1.0f + r / R) * data->points[data->type_point_index][1] - r / R * data->control_points[data->control_point_index][1];
@@ -232,9 +241,10 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 						data->selected_ctrl_point2 = data->control_points[data->control_point_index + 2];
 					}
 					else if (R != 0.0f && data->control_point_index > 3 * data->type_point_index) {
+						//选择控制点p2、保证控制点p1在控制点p2、p的直线上（共线）
 						float r =Click_Point_Distance(data->points[data->type_point_index], data->selected_ctrl_point1);
-						data->control_points[data->control_point_index - 2][0] = (1.0f + r / R) * data->points[data->type_point_index][0] - r / R * data->control_points[data->control_point_index][0];
-						data->control_points[data->control_point_index - 2][1] = (1.0f + r / R) * data->points[data->type_point_index][1] - r / R * data->control_points[data->control_point_index][1];
+						data->control_points[data->control_point_index - 2][0] = (1.0f - r / R) * data->points[data->type_point_index][0] - r / R * data->control_points[data->control_point_index-2][0];
+						data->control_points[data->control_point_index - 2][1] = (1.0f - r / R) * data->points[data->type_point_index][1] - r / R * data->control_points[data->control_point_index-2][1];
 						data->selected_ctrl_point1 = data->control_points[data->control_point_index - 2];
 						data->selected_ctrl_point2 = data->control_points[data->control_point_index];
 					}
