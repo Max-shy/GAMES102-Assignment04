@@ -219,11 +219,11 @@ void CanvasSystem::OnUpdate(Ubpa::UECS::Schedule& schedule) {
 				
 				// C1
 				if (data->btn2 == 0 && data->type_point_index > 0 && data->type_point_index < data->points.size() - 1) {
-					if (data->control_point_index == 3 * data->type_point_index -1) {
+					if (data->control_point_index < 3 * data->type_point_index ) {
 						data->control_points[data->control_point_index + 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
 						data->control_points[data->control_point_index + 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
 					}
-					else {
+					else if (data->control_point_index > 3 * data->type_point_index) {
 						data->control_points[data->control_point_index - 2][0] = 2.0f * data->points[data->type_point_index][0] - data->control_points[data->control_point_index][0];
 						data->control_points[data->control_point_index - 2][1] = 2.0f * data->points[data->type_point_index][1] - data->control_points[data->control_point_index][1];
 					}
