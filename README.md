@@ -160,5 +160,4 @@ Change the shape of Bezier curves by changing the control points.  According to 
 
   C1 continuity requires the endpoints to be collinear with the two control points while maintaining equal distances.
 
-
-code: [Max-shy/GAMES102-Assignment04](
+code: [Max-shy/GAMES102-Assignment04](https://github.com/Max-shy/GAMES102-Assignment04)
